@@ -1,0 +1,89 @@
+<!-- layer.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Layer Viewer</title>
+</head>
+<body>
+  <h2 id="layerTitle">Layer</h2>
+
+  <div id="metadataSection" style="display: none;">
+    <h3>Edit Metadata</h3>
+    <form id="metaForm">
+      <label>Title: <input type="text" id="title" /></label><br>
+      <label>Description: <input type="text" id="description" /></label><br>
+      <button type="submit">Save Metadata</button>
+    </form>
+  </div>
+
+  <h3>GeoJSON Data:</h3>
+  <pre id="geojsonData"></pre>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const department = params.get('department');
+    const layer = params.get('layer');
+    const showEditor = location.hash === '#edit';
+
+    document.getElementById('layerTitle').textContent = `Layer: ${layer}`;
+
+    if (showEditor) {
+      document.getElementById('metadataSection').style.display = 'block';
+      loadMetadata();
+    }
+
+    async function loadGeoJSON() {
+      try {
+        const res = await fetch(`/api/${department}/${layer}`, {
+          headers: {
+            Authorization: 'Bearer ' + localStorage.getItem('token')
+          }
+        });
+        const data = await res.json();
+        document.getElementById('geojsonData').textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        document.body.innerHTML += `<p>Error loading GeoJSON: ${err.message}</p>`;
+      }
+    }
+
+    async function loadMetadata() {
+      try {
+        const res = await fetch(`/api/${department}/${layer}/metainfo`, {
+          headers: {
+            Authorization: 'Bearer ' + localStorage.getItem('token')
+          }
+        });
+        const meta = await res.json();
+        document.getElementById('title').value = meta.title || '';
+        document.getElementById('description').value = meta.description || '';
+      } catch (err) {
+        alert('Failed to load metadata');
+      }
+    }
+
+    document.getElementById('metaForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = document.getElementById('title').value;
+      const description = document.getElementById('description').value;
+
+      try {
+        const res = await fetch(`/api/${department}/${layer}/metainfo`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + localStorage.getItem('token')
+          },
+          body: JSON.stringify({ title, description })
+        });
+        const data = await res.json();
+        alert(data.message || 'Metadata updated!');
+      } catch (err) {
+        alert('Failed to update metadata');
+      }
+    });
+
+    loadGeoJSON();
+  </script>
+</body>
+</html>
