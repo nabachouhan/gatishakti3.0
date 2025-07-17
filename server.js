@@ -9,10 +9,10 @@ import { fileURLToPath } from 'url';
 import { pool, pooluser } from './src/db/connections.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import './src/db/schema.js';
 
 dotenv.config();
 const app = express();
-const upload = multer({ dest: 'uploads/' });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +20,29 @@ const __dirname = path.dirname(__filename);
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
+
+
+// Configure multer
+const storage = multer.diskStorage({
+  destination: 'uploads/',
+  filename: (req, file, cb) => {
+    cb(null, file.originalname); // keep original file name
+  }
+});
+
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (
+      file.mimetype === 'application/zip' ||
+      file.mimetype === 'application/x-zip-compressed'
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only ZIP files are allowed.'));
+    }
+  }
+});
 
 // 🟢 JWT Middleware
 function authenticateJWT(req, res, next) {
@@ -38,8 +61,9 @@ app.post('/', async(req, res) => {
   console.log(req.body);
   
 
-  const result = await pooluser.query('SELECT * FROM clients WHERE username = $1', [username]);
+  const result = await pooluser.query('SELECT * FROM admins WHERE username = $1', [username]);
     const client = result.rows[0];
+    const role = result.rows[0].role;
     console.log(client);
     
     if ( !client ||username!=client.username || !(await bcrypt.compare(password, client.password))) {
@@ -47,14 +71,14 @@ app.post('/', async(req, res) => {
       return res.status(401).json(data);
     }
 
-  const token = jwt.sign({ username: username }, process.env.JWT_SECRET, { expiresIn: '2h' });
+  const token = jwt.sign({ username: username, role: role }, process.env.JWT_SECRET, { expiresIn: '2h' });
   res.json({ token });
 });
 
 
 // 📁 List departments
 app.get('/api', async (req, res) => {
-  const result = await pool.query('SELECT DISTINCT department FROM layer_metadata');
+  const result = await pooluser.query('SELECT DISTINCT department FROM layer_metadata');
   res.json(result.rows.map(r => r.department));
 });
 
@@ -65,7 +89,7 @@ app.get('/api/:department', async (req, res) => {
   
   console.log(`SELECT layer_name FROM layer_metadata WHERE department = ${department};`)
   
-  const result = await pool.query(
+  const result = await pooluser.query(
     'SELECT layer_name FROM layer_metadata WHERE department = $1',
     [department]
   );
@@ -100,7 +124,7 @@ app.get('/api/:department/:layer', async (req, res) => {
 // 📝 Get metadata
 app.get('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) => {
   const { department, layer } = req.params;
-  const result = await pool.query(
+  const result = await pooluser.query(
     'SELECT title, description FROM layer_metadata WHERE department = $1 AND layer_name = $2',
     [department, layer]
   );
@@ -113,7 +137,7 @@ app.put('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) =>
   const { department, layer } = req.params;
   const { title, description } = req.body;
 
-  await pool.query(`
+  await pooluser.query(`
     UPDATE layer_metadata 
     SET title = $1, description = $2 
     WHERE department = $3 AND layer_name = $4
@@ -151,7 +175,7 @@ app.put('/:department/:layer/data', authenticateJWT, upload.single('file'), asyn
     await execPromise(psqlCmd);
 
     // Get geometry info
-    const metaRes = await pool.query(`
+    const metaRes = await pooluser.query(`
       SELECT srid, type FROM geometry_columns
       WHERE f_table_schema = $1 AND f_table_name = $2
     `, [schema, table]);
@@ -161,7 +185,7 @@ app.put('/:department/:layer/data', authenticateJWT, upload.single('file'), asyn
     const { srid, type: geometry_type } = metaRes.rows[0];
 
     // Upsert metadata
-    await pool.query(`
+    await pooluser.query(`
       INSERT INTO layer_metadata (department, layer_name, srid, geometry_type)
       VALUES ($1, $2, $3, $4)
       ON CONFLICT (department, layer_name)
@@ -178,6 +202,72 @@ app.put('/:department/:layer/data', authenticateJWT, upload.single('file'), asyn
     fs.promises.unlink(file.path).catch(() => {});
   }
 });
+
+app.post('/upload', upload.single('file'), async (req, res) => {
+  const { department,filename  } = req.body;
+  const db = 'geodatasets';
+
+  // if (!filename || !file_type || !theme || !srid) {
+  //   return res.status(400).json({ message: 'All fields are required' });
+  // }
+
+  const client = await pool.connect();
+// if (!filename || !file_type || !theme || !srid) {
+//     return res.status(400).json({ message: 'All fields are required' });
+//   }
+
+  try {
+    // Check if layer already exists
+    const check = await client.query(`SELECT 1 FROM geodatasets WHERE filename = $1`, [filename]);
+    if (check.rowCount > 0) {
+      return res.status(400).json({ message: 'Shapefile name already exists' });
+    }
+
+    // Unzip
+    const zipPath = req.file.path;
+    const unzipPath = path.join('shpuploads', filename);
+    new AdmZip(zipPath).extractAllTo(unzipPath, true);
+
+    // Find .shp file
+    const shpFile = fs.readdirSync(unzipPath).find(f => f.endsWith('.shp'));
+    if (!shpFile) throw new Error('No .shp file found in zip');
+
+    const shpPath = path.join(unzipPath, shpFile);
+    const cmd = `shp2pgsql -I -s ${srid} "${shpPath}" ${filename} | psql -U ${process.env.db_user} -d ${theme}`;
+
+    // Upload to DB
+    exec(cmd, { env: { ...process.env, PGPASSWORD: process.env.PGPASSWORD } }, async (err, stdout, stderr) => {
+      if (err) {
+        console.error(stderr);
+        return res.status(500).json({ message: 'Error uploading shapefile' });
+      }
+
+      // Save original zip
+      const catalogDir = path.join(process.cwd(), 'catalog');
+      if (!fs.existsSync(catalogDir)) fs.mkdirSync(catalogDir);
+      const zipDest = path.join(catalogDir, `${filename}.zip`);
+      fs.copyFileSync(zipPath, zipDest);
+
+      // Insert metadata
+      await client.query(
+        `INSERT INTO catalog (filename, file_type, theme, srid, visibility, is_published)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [filename, file_type, theme, srid, false, false]
+      );
+
+    
+
+      res.status(201).json({ message: 'Shapefile uploaded successfully' });
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Upload failed' });
+  } finally {
+    client.release();
+  }
+});
+
+
 
 function execPromise(cmd) {
   return new Promise((resolve, reject) => {

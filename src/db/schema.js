@@ -1,8 +1,8 @@
-import { pool } from "./connections.js";
+import { pool, pooluser } from "./connections.js";
 
 async function createTables() {
   try {
-    await pool.query(`
+    await pooluser.query(`
       CREATE TABLE IF NOT EXISTS admins (
         id SERIAL PRIMARY KEY,
         username VARCHAR(100) NOT NULL,
