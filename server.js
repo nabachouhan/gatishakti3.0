@@ -10,6 +10,7 @@ import { pool, pooluser } from './src/db/connections.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import './src/db/schema.js';
+import AdmZip from 'adm-zip';
 
 dotenv.config();
 const app = express();
@@ -23,25 +24,24 @@ app.use(express.json());
 
 
 // Configure multer
-const storage = multer.diskStorage({
-  destination: 'uploads/',
-  filename: (req, file, cb) => {
-    cb(null, file.originalname); // keep original file name
-  }
-});
 
-const upload = multer({
-  storage,
-  fileFilter: (req, file, cb) => {
-    if (
-      file.mimetype === 'application/zip' ||
-      file.mimetype === 'application/x-zip-compressed'
-    ) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only ZIP files are allowed.'));
+const storage = multer.diskStorage({
+    destination: 'uploads/',
+    filename: (req, file, cb) => {
+        // Use the original filename (without any modifications)
+        cb(null, file.originalname);
     }
-  }
+});
+const upload = multer({
+    storage,
+    dest: 'uploads/',
+    fileFilter: (req, file, cb) => {
+        if (file.mimetype === 'application/zip' || file.mimetype === 'application/x-zip-compressed') {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid file type. Only ZIP files are allowed.'));
+        }
+    }
 });
 
 // 🟢 JWT Middleware
@@ -63,8 +63,8 @@ app.post('/', async(req, res) => {
 
   const result = await pooluser.query('SELECT * FROM admins WHERE username = $1', [username]);
     const client = result.rows[0];
-    const role = result.rows[0].role;
     console.log(client);
+    const role = result.rows[0].role;
     
     if ( !client ||username!=client.username || !(await bcrypt.compare(password, client.password))) {
       const data = { message: 'Invalid Credentials!!', title: "Oops?", icon: "warning", redirect:"/" };
@@ -78,7 +78,11 @@ app.post('/', async(req, res) => {
 
 // 📁 List departments
 app.get('/api', async (req, res) => {
+  console.log("fetch dept");
+  
   const result = await pooluser.query('SELECT DISTINCT department FROM layer_metadata');
+  console.log(result.rows);
+  
   res.json(result.rows.map(r => r.department));
 });
 
@@ -146,7 +150,7 @@ app.put('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) =>
   res.json({ message: 'Metadata updated' });
 });
 
-// ⬆️ Upload shapefile ZIP and update layer
+// ⬆️  update layer
 app.put('/:department/:layer/data', authenticateJWT, upload.single('file'), async (req, res) => {
   const { department, layer } = req.params;
   const file = req.file;
@@ -203,29 +207,57 @@ app.put('/:department/:layer/data', authenticateJWT, upload.single('file'), asyn
   }
 });
 
+// ⬆️ Upload shapefile ZIP
 app.post('/upload', upload.single('file'), async (req, res) => {
   const { department,filename  } = req.body;
   const db = 'geodatasets';
+console.log("req.body");
+console.log(req.body);
+console.log("req.body");
+
+console.log(req.file);
+console.log(filename);
+const srid = 4326;
+console.log("upload");
+
 
   // if (!filename || !file_type || !theme || !srid) {
   //   return res.status(400).json({ message: 'All fields are required' });
   // }
 
-  const client = await pool.connect();
-// if (!filename || !file_type || !theme || !srid) {
-//     return res.status(400).json({ message: 'All fields are required' });
-//   }
+  // if (!filename || !file_type || !theme || !srid) {
+    //     return res.status(400).json({ message: 'All fields are required' });
+    //   }
+    const client = await pooluser.connect();
 
   try {
     // Check if layer already exists
-    const check = await client.query(`SELECT 1 FROM geodatasets WHERE filename = $1`, [filename]);
+    const check = await client.query(`SELECT 1 FROM layer_metadata WHERE layer_name = $1`, [filename]);
     if (check.rowCount > 0) {
       return res.status(400).json({ message: 'Shapefile name already exists' });
     }
+        const basedir = 'uploads/'
+        const zip = new AdmZip(req.file.path);
+        const fullDirectoryPath = path.join(basedir, filename)
+
+                zip.extractAllTo(fullDirectoryPath, true);
+
+        const tmpshppath0 = fullDirectoryPath + '\\' + req.file.originalname;
+
+        const tmpshppath = path.normalize(tmpshppath0);
+        // Extract the file name without the extension
+        const shapefilePath = tmpshppath.replace(".zip", ".shp");
+        // -------------
 
     // Unzip
     const zipPath = req.file.path;
-    const unzipPath = path.join('shpuploads', filename);
+    console.log("zipPath");
+        console.log(zipPath);
+
+    const unzipPath = path.join('uploads', filename);
+    console.log("unzipPath");
+        console.log(unzipPath);
+
     new AdmZip(zipPath).extractAllTo(unzipPath, true);
 
     // Find .shp file
@@ -233,10 +265,10 @@ app.post('/upload', upload.single('file'), async (req, res) => {
     if (!shpFile) throw new Error('No .shp file found in zip');
 
     const shpPath = path.join(unzipPath, shpFile);
-    const cmd = `shp2pgsql -I -s ${srid} "${shpPath}" ${filename} | psql -U ${process.env.db_user} -d ${theme}`;
+    const cmd = `shp2pgsql -I -s ${srid} "${shpPath}" ${filename} | psql -U ${process.env.db_user} -d ${process.env.db_name}`;
 
     // Upload to DB
-    exec(cmd, { env: { ...process.env, PGPASSWORD: process.env.PGPASSWORD } }, async (err, stdout, stderr) => {
+    exec(cmd, { env: { ...process.env, PGPASSWORD: process.env.db_pw } }, async (err, stdout, stderr) => {
       if (err) {
         console.error(stderr);
         return res.status(500).json({ message: 'Error uploading shapefile' });
@@ -250,9 +282,9 @@ app.post('/upload', upload.single('file'), async (req, res) => {
 
       // Insert metadata
       await client.query(
-        `INSERT INTO catalog (filename, file_type, theme, srid, visibility, is_published)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [filename, file_type, theme, srid, false, false]
+        `INSERT INTO layer_metadata (department, layer_name)
+         VALUES ($1, $2)`,
+        [department, filename]
       );
 
     
@@ -267,6 +299,61 @@ app.post('/upload', upload.single('file'), async (req, res) => {
   }
 });
 
+// ⬆️ rEPLACE shapefile ZIP
+app.post('/replace', upload.single('file'), async (req, res) => {
+  console.log("replce-------------------------");
+  
+  const {filename } = req.body;
+  console.log(req.body);
+  
+  const srid = 4326;
+
+  const client = await pooluser.connect();
+  try {
+    const check = await client.query(`SELECT 1 FROM layer_metadata WHERE layer_name = $1`, [filename]);
+    if (check.rowCount === 0) {
+      return res.status(404).json({ message: 'Layer not found in metadata. Cannot replace.' });
+    }
+
+    // Extract uploaded zip
+    const zipPath = req.file.path;
+    const unzipPath = path.join('uploads', filename + '_replace');
+    new AdmZip(zipPath).extractAllTo(unzipPath, true);
+
+    const shpFile = fs.readdirSync(unzipPath).find(f => f.endsWith('.shp'));
+    if (!shpFile) throw new Error('No .shp file found');
+
+    const shpPath = path.join(unzipPath, shpFile);
+
+    // Drop + recreate table
+const dropCmd = `psql -U ${process.env.db_user} -d ${process.env.db_name} -c "DROP TABLE IF EXISTS ${filename} CASCADE;"`;
+const importCmd = `shp2pgsql -I -s ${srid} "${shpPath}" ${filename} | psql -U ${process.env.db_user} -d ${process.env.db_name}`;
+
+
+exec(dropCmd, { env: { ...process.env, PGPASSWORD: process.env.db_pw } }, (dropErr, dropStdout, dropStderr) => {
+  if (dropErr) {
+    console.error('DROP error:', dropStderr);
+    return res.status(500).json({ message: 'Failed to drop existing table' });
+  }
+
+  exec(importCmd, { env: { ...process.env, PGPASSWORD: process.env.db_pw } }, async (importErr, importStdout, importStderr) => {
+    if (importErr || importStderr.toLowerCase().includes('error')) {
+      console.error('Import error:', importStderr || importErr);
+      return res.status(500).json({ message: 'Failed to import new shapefile' });
+    }
+
+    res.status(200).json({ message: 'Layer replaced successfully' });
+  });
+});
+
+
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: 'Replace failed' });
+  } finally {
+    client.release();
+  }
+});
 
 
 function execPromise(cmd) {
@@ -277,11 +364,6 @@ function execPromise(cmd) {
     });
   });
 }
-
-// // 🔚 Default route
-// app.get('/', (req, res) => {
-//   res.sendFile(path.join(__dirname, 'public', 'login.html'));
-// });
 
 app.get('/', (req, res) => {
   res.redirect('/login.html');
