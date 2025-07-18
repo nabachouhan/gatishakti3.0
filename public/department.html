@@ -110,7 +110,18 @@
     </div>
   </div>
 </div>
-
+ <!-- loader -->
+    <div id="loader0"
+      style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background-color:rgba(0,0,0,0.2); z-index:1000;">
+      <div
+        style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+        <button class="btn btn-primary" type="button" disabled>
+          <span class="spinner-grow spinner-grow-sm" role="status"
+            aria-hidden="true"></span>
+          Processing...
+        </button>
+      </div>
+    </div>
 
 
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -274,6 +285,10 @@
 
     }
   loadLayers();
+  // --hide replace popup--
+  function closeReplacePopup() {
+  document.getElementById('replacePopup').style.display = 'none';
+}
 //-- replace --
 document.getElementById('replaceForm').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -288,16 +303,19 @@ document.getElementById('replaceForm').addEventListener('submit', async (e) => {
   });
 
   if (!confirm.isConfirmed) return;
-
+    document.getElementById('loader0').style.display = 'block';
   fetch('/replace', {
     method: 'POST',
     body: formData
   })
     .then(res => res.json())
     .then(data => {
+      document.getElementById('loader0').style.display = 'none'
+
       Swal.fire(data.title || 'Success', data.message, data.icon || 'success');
     })
     .catch(err => {
+      document.getElementById('loader0').style.display = 'none'
       console.error(err);
       Swal.fire('Error', 'Could not replace layer.', 'error');
     });
