@@ -126,29 +126,50 @@ app.get('/api/:department/:layer', async (req, res) => {
 });
 
 // 📝 Get metadata
-app.get('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) => {
+app.get('/api/:department/:layer/metainfo', async (req, res) => {
   const { department, layer } = req.params;
   const result = await pooluser.query(
-    'SELECT title, description FROM layer_metadata WHERE department = $1 AND layer_name = $2',
+    'SELECT * FROM layer_metadata WHERE department = $1 AND layer_name = $2',
     [department, layer]
   );
   if (result.rowCount === 0) return res.status(404).json({ error: 'Metadata not found' });
   res.json(result.rows[0]);
 });
 
-// ✏️ Update metadata
-app.put('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) => {
-  const { department, layer } = req.params;
-  const { title, description } = req.body;
 
-  await pooluser.query(`
+// ✏️ Update full metadata (no allowedFields filter; match only by layer_name)
+app.put('/api/:department/:layer/metainfo', async (req, res) => {
+  const { layer } = req.params;
+  const metadata = req.body;
+
+  const fields = Object.keys(metadata);
+  const values = fields.map(key => metadata[key]);
+
+  if (fields.length === 0) {
+    return res.status(400).json({ error: 'No metadata fields provided.' });
+  }
+
+  // Build dynamic SET clause
+  const setClause = fields.map((field, i) => `${field} = $${i + 1}`).join(', ');
+
+  const query = `
     UPDATE layer_metadata 
-    SET title = $1, description = $2 
-    WHERE department = $3 AND layer_name = $4
-  `, [title, description, department, layer]);
+    SET ${setClause} 
+    WHERE layer_name = $${fields.length + 1}
+  `;
 
-  res.json({ message: 'Metadata updated' });
+  try {
+    await pooluser.query(query, [...values, layer]);
+    res.json({ message: 'Metadata updated successfully.' });
+  } catch (err) {
+    console.error('Metadata update error:', err);
+    res.status(500).json({ error: 'Failed to update metadata.' });
+  }
 });
+
+
+
+
 
 // ⬆️  update layer
 app.put('/:department/:layer/data', authenticateJWT, upload.single('file'), async (req, res) => {
