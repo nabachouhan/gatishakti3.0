@@ -192,6 +192,7 @@ document.getElementById('adminUploadForm').addEventListener('submit', async(even
 
     // Proceed with the fetch request if confirmed
     await fetch(url, {
+        headers: { Authorization: 'Bearer ' + token },
         method: 'POST',
         body: formData,
     })
@@ -229,6 +230,22 @@ document.getElementById('adminUploadForm').addEventListener('submit', async(even
     }
 
     loadDepartments();
+
+document.addEventListener('DOMContentLoaded', () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      window.location.href = '/login.html';
+    } else {
+      // Optionally verify token with server
+      fetch('/verify-token', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).then(res => {
+        if (!res.ok) {
+          window.location.href = '/login.html';
+        }
+      });
+    }
+  });    
   </script>
   </body>
 

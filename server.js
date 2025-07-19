@@ -77,7 +77,7 @@ app.post('/', async(req, res) => {
 
 
 // 📁 List departments
-app.get('/api', async (req, res) => {
+app.get('/api', authenticateJWT, async (req, res) => {
   console.log("fetch dept");
   
   const result = await pooluser.query('SELECT DISTINCT department FROM layer_metadata');
@@ -87,7 +87,7 @@ app.get('/api', async (req, res) => {
 });
 
 // 📂 List layers in a department
-app.get('/api/:department', async (req, res) => {
+app.get('/api/:department', authenticateJWT, async (req, res) => {
   const { department } = req.params;
   console.log(req.params);
   
@@ -101,7 +101,7 @@ app.get('/api/:department', async (req, res) => {
 });
 
 // 🌍 Get GeoJSON of a layer
-app.get('/api/:department/:layer', async (req, res) => {
+app.get('/api/:department/:layer', authenticateJWT, async (req, res) => {
   const { department, layer } = req.params;
   try {
     const result = await pool.query(`
@@ -126,7 +126,7 @@ app.get('/api/:department/:layer', async (req, res) => {
 });
 
 // 📝 Get metadata
-app.get('/api/:department/:layer/metainfo', async (req, res) => {
+app.get('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) => {
   const { department, layer } = req.params;
   const result = await pooluser.query(
     'SELECT * FROM layer_metadata WHERE department = $1 AND layer_name = $2',
@@ -138,7 +138,7 @@ app.get('/api/:department/:layer/metainfo', async (req, res) => {
 
 
 // ✏️ Update full metadata (no allowedFields filter; match only by layer_name)
-app.put('/api/:department/:layer/metainfo', async (req, res) => {
+app.put('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) => {
   const { layer } = req.params;
   const metadata = req.body;
 
@@ -229,7 +229,7 @@ app.put('/:department/:layer/data', authenticateJWT, upload.single('file'), asyn
 });
 
 // ⬆️ Upload shapefile ZIP
-app.post('/upload', upload.single('file'), async (req, res) => {
+app.post('/upload', authenticateJWT, upload.single('file'), async (req, res) => {
   const { department,filename  } = req.body;
   const db = 'geodatasets';
 console.log("req.body");
@@ -321,7 +321,7 @@ console.log("upload");
 });
 
 // ⬆️ rEPLACE shapefile ZIP
-app.post('/replace', upload.single('file'), async (req, res) => {
+app.post('/replace', authenticateJWT, upload.single('file'), async (req, res) => {
   console.log("replce-------------------------");
   
   const {filename } = req.body;
@@ -376,6 +376,17 @@ exec(dropCmd, { env: { ...process.env, PGPASSWORD: process.env.db_pw } }, (dropE
   }
 });
 
+app.get('/verify-token', (req, res) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) return res.sendStatus(401);
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) return res.sendStatus(403);
+    res.sendStatus(200); // Token valid
+  });
+});
 
 function execPromise(cmd) {
   return new Promise((resolve, reject) => {

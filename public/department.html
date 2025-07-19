@@ -23,31 +23,7 @@
     <ul id="layerList" class="list-group"></ul>
   </div>
 
-  <!-- Edit Metadata Modal -->
-  <!-- <div class="modal fade" id="editPopup" tabindex="-1" aria-labelledby="editPopupLabel" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="editPopupLabel">Edit Metadata</h5>
-          <button type="button" class="btn-close" onclick="closePopup()" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <div class="mb-3">
-            <label for="editTitle" class="form-label">Title</label>
-            <input type="text" class="form-control" id="editTitle">
-          </div>
-          <div class="mb-3">
-            <label for="editDesc" class="form-label">Description</label>
-            <textarea class="form-control" id="editDesc" rows="4"></textarea>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" onclick="closePopup()">Cancel</button>
-          <button type="button" class="btn btn-primary" onclick="saveMetadata()">Save</button>
-        </div>
-      </div>
-    </div>
-  </div> -->
+ 
 
   <!-- Edit Metadata Modal -->
 <div class="modal fade" id="editPopup" tabindex="-1" aria-labelledby="editPopupLabel" aria-hidden="true">
@@ -100,13 +76,20 @@
         </div>
 
         <!-- Spatial Info -->
-        <div class="mb-3">
-          <label for="editGeometryType" class="form-label">Geometry Type</label>
-          <input type="text" class="form-control" id="editGeometryType">
-        </div>
+     <label for="editGeometryType" class="form-label">Geometry Type</label>
+      <select class="form-control" id="editGeometryType">
+        <option value="">Select Geometry</option>
+        <option value="Point">Point</option>
+        <option value="MultiPoint">MultiPoint</option>
+        <option value="LineString">LineString</option>
+        <option value="MultiLineString">MultiLineString</option>
+        <option value="Polygon">Polygon</option>
+        <option value="MultiPolygon">MultiPolygon</option>
+      </select>
+
         <div class="mb-3">
           <label for="editSRID" class="form-label">SRID</label>
-          <input type="number" class="form-control" id="editSRID">
+          <input type="number" class="form-control" id="editSRID" value="4326">
         </div>
         <div class="mb-3">
           <label for="editScale" class="form-label">Scale Denominator</label>
@@ -133,8 +116,8 @@
           <input type="text" class="form-control" id="editCitationTitle">
         </div>
         <div class="mb-3">
-          <label for="editCitationDate" class="form-label">Citation Date</label>
-          <input type="date" class="form-control" id="editCitationDate">
+          <label for="editCitationDate" class="form-label">Citation Date <span class="text-danger">*</span></label>
+          <input type="date" class="form-control" id="editCitationDate" required>
         </div>
         <div class="mb-3">
           <label for="editPublisher" class="form-label">Publisher</label>
@@ -189,18 +172,7 @@
 </div>
 
 
-  <!-- Replace File Popup -->
-<!-- <div id="replacePopup" style="display:none; position:fixed; top:20%; left:35%; width:30%; background:white; border:1px solid #aaa; padding:20px; z-index:9999;">
-  <h4>Replace Layer Data</h4>
-  <form id="replaceForm">
-    <input type="file" name="file" required accept=".zip" />
-    <input type="hidden" name="filename" id="replaceFilename" />
-    <input type="hidden" name="department" id="replaceDepartment" />
-    <br/><br/>
-    <button type="submit">Replace</button>
-    <button type="button" onclick="closeReplacePopup()">Cancel</button>
-  </form>
-</div> -->
+
 
 <!-- Replace File Modal -->
 <div class="modal fade" id="replacePopup" tabindex="-1" aria-labelledby="replacePopupLabel" aria-hidden="true">
@@ -251,7 +223,7 @@
   <script>
 
 
-
+  //check is admin--
     function parseJwt(token) {
       try {
         return JSON.parse(atob(token.split('.')[1]));
@@ -269,7 +241,8 @@
     const params = new URLSearchParams(location.search);
     const department = params.get('name');
     document.getElementById('deptTitle').textContent = `Department: ${department}`;
-
+    
+   //load all layers
     async function loadLayers() {
       try {
         const res = await fetch(`/api/${department}`, {
@@ -312,25 +285,6 @@
 
     let selectedLayer = null;
 
-   /* function openEditPopup(layer) {
-      selectedLayer = layer;
-      fetch(`/api/${department}/${layer}/metainfo`, {
-        headers: {
-          Authorization: 'Bearer ' + localStorage.getItem('token')
-        }
-      })
-      .then(res => res.json())
-      .then(data => {
-        document.getElementById('editTitle').value = data.title || '';
-        document.getElementById('editDesc').value = data.description || '';
-        new bootstrap.Modal(document.getElementById('editPopup')).show();
-      })
-      .catch(err => {
-        alert('Failed to load metadata');
-      });
-    }
-
-    */
     
  
     function openEditPopup(layer) {
@@ -358,7 +312,8 @@
     document.getElementById('editAttrAccuracy').value = data.attribute_accuracy || '';
     document.getElementById('editLineage').value = data.lineage || '';
     document.getElementById('editCitationTitle').value = data.citation_title || '';
-    document.getElementById('editCitationDate').value = data.citation_date || '';
+    document.getElementById('editCitationDate').value = data.citation_date? new Date(data.citation_date).toISOString().split('T')[0]: '';
+
     document.getElementById('editPublisher').value = data.publisher || '';
 
     new bootstrap.Modal(document.getElementById('editPopup')).show();
@@ -369,32 +324,11 @@
   });
 }
 
-
-
-    /*function saveMetadata() {
-      const title = document.getElementById('editTitle').value;
-      const description = document.getElementById('editDesc').value;
-
-      fetch(`/api/${department}/${selectedLayer}/metainfo`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + localStorage.getItem('token')
-        },
-        body: JSON.stringify({ title, description })
-      })
-      .then(res => res.json())
-      .then(data => {
-        alert('Metadata updated');
-        closePopup();
-        loadLayers(); 
-      })
-      .catch(err => {
-        alert('Failed to update metadata');
-      });
-    }*/
-
     function saveMetadata() {
+      if(document.getElementById('editCitationDate').value ===''){
+        alert("Citation Date Can't be empty");
+        return;
+      }
   const payload = {
     title: document.getElementById('editTitle').value,
     description: document.getElementById('editDesc').value,
@@ -529,6 +463,7 @@ document.getElementById('replaceForm').addEventListener('submit', async (e) => {
   if (!confirm.isConfirmed) return;
     document.getElementById('loader0').style.display = 'block';
   fetch('/replace', {
+    headers: { Authorization: 'Bearer ' + token },
     method: 'POST',
     body: formData
   })
@@ -544,6 +479,23 @@ document.getElementById('replaceForm').addEventListener('submit', async (e) => {
       Swal.fire('Error', 'Could not replace layer.', 'error');
     });
 });
+
+
+document.addEventListener('DOMContentLoaded', () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      window.location.href = '/login.html';
+    } else {
+      // Optionally verify token with server
+      fetch('/verify-token', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).then(res => {
+        if (!res.ok) {
+          window.location.href = '/login.html';
+        }
+      });
+    }
+  });    
 
   </script>
 </body>
