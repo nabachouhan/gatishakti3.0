@@ -58,46 +58,53 @@ function authenticateJWT(req, res, next) {
 // 🔐 Login route
 app.post('/', async(req, res) => {
   const { username, password } = req.body;
-  console.log(req.body);
+  // console.log(req.body);
+  try {
+    const result = await pooluser.query('SELECT * FROM admins WHERE username = $1', [username]);
+      const client = result.rows[0];
+      // console.log(client);
+      const role = result.rows[0].role;
+      
+      if ( !client ||username!=client.username || !(await bcrypt.compare(password, client.password))) {
+        const data = { message: 'Invalid Credentials!!', title: "Oops?", icon: "warning", redirect:"/" };
+        return res.status(401).json(data);
+      }
   
+    const token = jwt.sign({ username: username, role: role }, process.env.JWT_SECRET, { expiresIn: '2h' });
+    res.json({ token });
+  } catch (error) {
+    res.status(500).json({"message":"server Error"})
+  }
 
-  const result = await pooluser.query('SELECT * FROM admins WHERE username = $1', [username]);
-    const client = result.rows[0];
-    console.log(client);
-    const role = result.rows[0].role;
-    
-    if ( !client ||username!=client.username || !(await bcrypt.compare(password, client.password))) {
-      const data = { message: 'Invalid Credentials!!', title: "Oops?", icon: "warning", redirect:"/" };
-      return res.status(401).json(data);
-    }
-
-  const token = jwt.sign({ username: username, role: role }, process.env.JWT_SECRET, { expiresIn: '2h' });
-  res.json({ token });
 });
 
 
 // 📁 List departments
 app.get('/api', authenticateJWT, async (req, res) => {
-  console.log("fetch dept");
   
+try {
   const result = await pooluser.query('SELECT DISTINCT department FROM layer_metadata');
-  console.log(result.rows);
-  
-  res.json(result.rows.map(r => r.department));
+    // console.log(result.rows);
+    res.status(200).json(result.rows.map(r => r.department));
+} catch (error) {
+      res.status(500).json({"message":"server Error"})
+}  
 });
 
 // 📂 List layers in a department
 app.get('/api/:department', authenticateJWT, async (req, res) => {
   const { department } = req.params;
-  console.log(req.params);
-  
-  console.log(`SELECT layer_name FROM layer_metadata WHERE department = ${department};`)
-  
-  const result = await pooluser.query(
-    'SELECT layer_name FROM layer_metadata WHERE department = $1',
-    [department]
-  );
-  res.json(result.rows);
+  // console.log(req.params);
+  // console.log(`SELECT layer_name FROM layer_metadata WHERE department = ${department};`)
+  try {
+    const result = await pooluser.query(
+      'SELECT layer_name FROM layer_metadata WHERE department = $1',
+      [department]
+    );
+    res.status(200).json(result.rows);
+  } catch (error) {
+      res.status(500).json({"message":"server Error"})
+  }
 });
 
 // 🌍 Get GeoJSON of a layer
@@ -127,13 +134,19 @@ app.get('/api/:department/:layer', authenticateJWT, async (req, res) => {
 
 // 📝 Get metadata
 app.get('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) => {
-  const { department, layer } = req.params;
-  const result = await pooluser.query(
-    'SELECT * FROM layer_metadata WHERE department = $1 AND layer_name = $2',
-    [department, layer]
-  );
-  if (result.rowCount === 0) return res.status(404).json({ error: 'Metadata not found' });
-  res.json(result.rows[0]);
+
+  try {
+    const { department, layer } = req.params;
+    const result = await pooluser.query(
+      'SELECT * FROM layer_metadata WHERE department = $1 AND layer_name = $2',
+      [department, layer]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Metadata not found' });
+    res.json(result.rows[0]);
+    
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to Get metadata' });
+  }
 });
 
 
@@ -142,6 +155,7 @@ app.put('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) =>
   const { layer } = req.params;
   const metadata = req.body;
 
+  try {
   const fields = Object.keys(metadata);
   const values = fields.map(key => metadata[key]);
 
@@ -158,9 +172,8 @@ app.put('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) =>
     WHERE layer_name = $${fields.length + 1}
   `;
 
-  try {
     await pooluser.query(query, [...values, layer]);
-    res.json({ message: 'Metadata updated successfully.' });
+    res.status(201).json({ message: 'Metadata updated successfully.' });
   } catch (err) {
     console.error('Metadata update error:', err);
     res.status(500).json({ error: 'Failed to update metadata.' });
@@ -232,23 +245,8 @@ app.put('/:department/:layer/data', authenticateJWT, upload.single('file'), asyn
 app.post('/upload', authenticateJWT, upload.single('file'), async (req, res) => {
   const { department,filename  } = req.body;
   const db = 'geodatasets';
-console.log("req.body");
-console.log(req.body);
-console.log("req.body");
-
-console.log(req.file);
-console.log(filename);
 const srid = 4326;
-console.log("upload");
 
-
-  // if (!filename || !file_type || !theme || !srid) {
-  //   return res.status(400).json({ message: 'All fields are required' });
-  // }
-
-  // if (!filename || !file_type || !theme || !srid) {
-    //     return res.status(400).json({ message: 'All fields are required' });
-    //   }
     const client = await pooluser.connect();
 
   try {
@@ -272,12 +270,8 @@ console.log("upload");
 
     // Unzip
     const zipPath = req.file.path;
-    console.log("zipPath");
-        console.log(zipPath);
 
     const unzipPath = path.join('uploads', filename);
-    console.log("unzipPath");
-        console.log(unzipPath);
 
     new AdmZip(zipPath).extractAllTo(unzipPath, true);
 
@@ -295,11 +289,7 @@ console.log("upload");
         return res.status(500).json({ message: 'Error uploading shapefile' });
       }
 
-      // Save original zip
-      const catalogDir = path.join(process.cwd(), 'catalog');
-      if (!fs.existsSync(catalogDir)) fs.mkdirSync(catalogDir);
-      const zipDest = path.join(catalogDir, `${filename}.zip`);
-      fs.copyFileSync(zipPath, zipDest);
+
 
       // Insert metadata
       await client.query(
@@ -322,10 +312,10 @@ console.log("upload");
 
 // ⬆️ rEPLACE shapefile ZIP
 app.post('/replace', authenticateJWT, upload.single('file'), async (req, res) => {
-  console.log("replce-------------------------");
+  // console.log("replce-------------------------");
   
   const {filename } = req.body;
-  console.log(req.body);
+  // console.log(req.body);
   
   const srid = 4326;
 

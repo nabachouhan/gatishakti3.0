@@ -18,6 +18,12 @@
   </style>
   </head>
   <body class="bg-light">
+      <header class="bg-primary text-white py-3 mb-4 shadow-sm">
+    <div class="container">
+      <h1 class="h4 mb-0 text-center text-uppercase">Assam State Space Application Centre</h1>
+    </div>
+  </header>
+  
     <div class="container py-4">
       <div class="row">
         <!-- Department list (left side) -->
@@ -32,8 +38,18 @@
           <h4 class="mb-3">Upload Department ZIP</h4>
           <form id="adminUploadForm" class="form">
             <div class="mb-3">
-              <label for="filename" class="form-label">Title</label>
-              <input type="text" class="form-control" id="filename" name="filename" id required>
+              <label for="filename" class="form-label">File Name</label>
+                <input 
+                  type="text" 
+                  class="form-control" 
+                  id="filename" 
+                  name="filename" 
+                  pattern="^[a-z][a-z0-9_]*$" 
+                  title="Must start with a lowercase letter and contain only lowercase letters, numbers, or underscores." 
+                  required
+                  oninput="this.value = this.value.replace(/[^a-z0-9_]/g, '').replace(/^[^a-z]+/, '')"
+                >
+
             </div>
             <div class="mb-3">
               <label for="department" class="form-label">Title</label>
