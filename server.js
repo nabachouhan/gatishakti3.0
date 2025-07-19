@@ -60,7 +60,7 @@ app.post('/', async(req, res) => {
   const { username, password } = req.body;
   // console.log(req.body);
   try {
-    const result = await pooluser.query('SELECT * FROM admins WHERE username = $1', [username]);
+    const result = await pooluser.query('SELECT * FROM credentials WHERE username = $1', [username]);
       const client = result.rows[0];
       // console.log(client);
       const role = result.rows[0].role;
