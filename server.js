@@ -366,6 +366,41 @@ exec(dropCmd, { env: { ...process.env, PGPASSWORD: process.env.db_pw } }, (dropE
   }
 });
 
+// Delete a layer completely
+app.delete('/delete/:department/:layer', async (req, res) => {
+  const { department, layer } = req.params;
+  const client = await pooluser.connect();
+  const dataclient = await pool.connect();
+  
+  try {
+    // Check if layer exists in metadata
+    const check = await client.query(`SELECT * FROM layer_metadata WHERE layer_name = $1`, [layer]);
+    if (check.rowCount === 0) {
+      return res.status(404).json({ message: 'Layer not found in metadata' });
+    }
+
+    // Delete PostGIS table
+    await dataclient.query(`DROP TABLE IF EXISTS "${layer}" CASCADE`);
+
+    // Delete metadata
+    await client.query(`DELETE FROM layer_metadata WHERE layer_name = $1`, [layer]);
+
+    // Delete file from catalog folder
+    const zipPath = path.join(process.cwd(), 'catalog', `${layer}.zip`);
+    if (fs.existsSync(zipPath)) {
+      fs.unlinkSync(zipPath);
+    }
+
+    res.status(200).json({ message: `Layer "${layer}" deleted successfully.` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Deletion failed' });
+  } finally {
+    client.release();
+    dataclient.release();
+  }
+});
+
 app.get('/verify-token', (req, res) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];

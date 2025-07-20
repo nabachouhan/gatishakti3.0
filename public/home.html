@@ -14,43 +14,53 @@
     }
     .department-card:hover {
       transform: translateY(-5px);
+      background-color: rgb(144, 243, 210);
     }
   </style>
   </head>
   <body class="bg-light">
-      <header class="bg-primary text-white py-3 mb-4 shadow-sm">
-    <div class="container">
-      <h1 class="h4 mb-0 text-center text-uppercase">Assam State Space Application Centre</h1>
-    </div>
-  </header>
-  
-    <div class="container py-4">
-      <div class="row">
-        <!-- Department list (left side) -->
-        <div class="col-md-8">
-          <h2 class="mb-4 text-center">All Departments</h2>
-          <ul id="departmentList" class="list-group"></ul>
-        </div>
+ <header class="bg-primary text-white py-3 mb-4 shadow-sm">
+  <div class="container">
+    <h1 class="h4 mb-0 text-center text-uppercase">Assam State Space Application Centre</h1>
+  </div>
+</header>
 
-        <!-- Upload form (right side, admin-only) -->
-        <div class="col-md-4 mt-4" id="uploadFormContainer"
-          style="display: none;">
+<div class="container">
+  <div class="d-flex justify-content-end mb-3">
+    <button id="logoutBtn" class="btn btn-danger">Logout</button>
+  </div>
+
+  <div class="row">
+    <!-- Department list (left side) -->
+    <div class="col-md-8">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h2 class="mb-4 text-center">All Departments</h2>
+          <ul id="departmentList" class="list-group list-group-flush"></ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload form (right side, admin-only) -->
+    <div class="col-md-4 mt-4 mt-md-0" id="uploadFormContainer" style="display: none;">
+      <div class="card shadow-sm">
+        <div class="card-body">
           <h4 class="mb-3">Upload Department ZIP</h4>
           <form id="adminUploadForm" class="form">
             <div class="mb-3">
               <label for="filename" class="form-label">File Name</label>
-                <input 
-                  type="text" 
-                  class="form-control" 
-                  id="filename" 
-                  name="filename" 
-                  pattern="^[a-z][a-z0-9_]*$" 
-                  title="Must start with a lowercase letter and contain only lowercase letters, numbers, or underscores." 
-                  required
-                  oninput="this.value = this.value.replace(/[^a-z0-9_]/g, '').replace(/^[^a-z]+/, '')"
-                >
-
+              <input 
+                type="text" 
+                class="form-control" 
+                id="filename" 
+                name="filename" 
+                pattern="^[a-z][a-z0-9_]*$" 
+                title="Must start with a lowercase letter and contain only lowercase letters, numbers, or underscores." 
+                required
+                oninput="this.value = this.value.replace(/[^a-z0-9_]/g, '').replace(/^[^a-z]+/, '')"
+              >
             </div>
+
             <div class="mb-3">
               <label for="department" class="form-label">Title</label>
               <select class="form-select mb-3" id="department" name="department">
@@ -97,19 +107,22 @@
                 <option value="Welfare-of-Minorities-And-Development-Department">Welfare-of-Minorities-And-Development-Department</option>
                 <option value="Welfare-of-Plain-Tribes-And-Backward-Classes-Department">Welfare-of-Plain-Tribes-And-Backward-Classes-Department</option>
               </select>
-
             </div>
+
             <div class="mb-3">
               <label for="file" class="form-label">ZIP File</label>
-              <input type="file" class="form-control" id="file" name="file" accept=".zip"
-                required>
+              <input type="file" class="form-control" id="file" name="file" accept=".zip" required>
             </div>
-            <button type="submit" class="btn btn-primary">Upload</button>
+
+            <button type="submit" class="btn btn-primary w-100">Upload</button>
           </form>
           <div id="uploadStatus" class="mt-2"></div>
         </div>
       </div>
     </div>
+  </div>
+</div>
+
     <!-- loader -->
     <div id="loader0"
       style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background-color:rgba(0,0,0,0.2); z-index:1000;">
@@ -246,6 +259,13 @@ document.getElementById('adminUploadForm').addEventListener('submit', async(even
     }
 
     loadDepartments();
+
+    // logout
+    // logout
+document.getElementById("logoutBtn").addEventListener('click', () => {
+    localStorage.removeItem('token');
+    window.location.href = 'login.html';
+  })
 
 document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem('token');
