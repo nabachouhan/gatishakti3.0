@@ -368,7 +368,7 @@
   };
 
   fetch(`/api/${department}/${selectedLayer}/metainfo`, {
-    method: 'PUT',
+    method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: 'Bearer ' + localStorage.getItem('token')
@@ -509,7 +509,7 @@ async function confirmDeleteLayer(layerName) {
   if (!confirm.isConfirmed) return;
 
   fetch(`/delete/${department}/${layerName}`, {
-    method: 'DELETE'
+    method: 'POST'
   })
     .then(res => res.json())
     .then(data => {

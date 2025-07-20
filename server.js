@@ -151,7 +151,7 @@ app.get('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) =>
 
 
 // ✏️ Update full metadata (no allowedFields filter; match only by layer_name)
-app.put('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) => {
+app.post('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) => {
   const { layer } = req.params;
   const metadata = req.body;
 
@@ -184,62 +184,7 @@ app.put('/api/:department/:layer/metainfo', authenticateJWT, async (req, res) =>
 
 
 
-// ⬆️  update layer
-app.put('/:department/:layer/data', authenticateJWT, upload.single('file'), async (req, res) => {
-  const { department, layer } = req.params;
-  const file = req.file;
-  const schema = department.toLowerCase();
-  const table = layer.toLowerCase();
-  const uploadDir = `uploads/${Date.now()}`;
 
-  try {
-    await fs.promises.mkdir(uploadDir, { recursive: true });
-
-    await fs.createReadStream(file.path)
-      .pipe(unzipper.Extract({ path: uploadDir }))
-      .promise();
-
-    const shpFile = fs.readdirSync(uploadDir).find(f => f.endsWith('.shp'));
-    if (!shpFile) throw new Error('No .shp file found');
-
-    const shpPath = path.join(uploadDir, shpFile);
-    const sqlFile = path.join(uploadDir, `${table}.sql`);
-
-    // Drop & Create using shp2pgsql
-    const shp2pgsqlCmd = `shp2pgsql -s 4326 -I -W "UTF-8" -g geom -d "${shpPath}" "${schema}.${table}" > "${sqlFile}"`;
-    await execPromise(shp2pgsqlCmd);
-
-    const psqlCmd = `psql -U ${process.env.DB_USER} -d ${process.env.DB_NAME} -f "${sqlFile}"`;
-    await execPromise(psqlCmd);
-
-    // Get geometry info
-    const metaRes = await pooluser.query(`
-      SELECT srid, type FROM geometry_columns
-      WHERE f_table_schema = $1 AND f_table_name = $2
-    `, [schema, table]);
-
-    if (metaRes.rowCount === 0) throw new Error('Geometry not found');
-
-    const { srid, type: geometry_type } = metaRes.rows[0];
-
-    // Upsert metadata
-    await pooluser.query(`
-      INSERT INTO layer_metadata (department, layer_name, srid, geometry_type)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (department, layer_name)
-      DO UPDATE SET srid = $3, geometry_type = $4
-    `, [department, layer, srid, geometry_type]);
-
-    res.json({ message: 'Layer updated successfully' });
-
-  } catch (err) {
-    console.error('Upload failed:', err);
-    res.status(500).json({ error: err.message || 'Upload failed' });
-  } finally {
-    fs.promises.rm(uploadDir, { recursive: true, force: true }).catch(() => {});
-    fs.promises.unlink(file.path).catch(() => {});
-  }
-});
 
 // ⬆️ Upload shapefile ZIP
 app.post('/upload', authenticateJWT, upload.single('file'), async (req, res) => {
@@ -367,7 +312,7 @@ exec(dropCmd, { env: { ...process.env, PGPASSWORD: process.env.db_pw } }, (dropE
 });
 
 // Delete a layer completely
-app.delete('/delete/:department/:layer', async (req, res) => {
+app.post('/delete/:department/:layer', async (req, res) => {
   const { department, layer } = req.params;
   const client = await pooluser.connect();
   const dataclient = await pool.connect();
